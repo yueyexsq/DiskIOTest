@@ -108,7 +108,7 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 	chrono::steady_clock::time_point start, printLogTime,end;
 	printLogTime = chrono::steady_clock::now();
 
-	// 初始化需要打印log的文件
+	// 初始化打开需要打印log的文件
 	int fileIndex = 1;
 	std::vector<FILE*> vecFILE;
 	for (int i = 0; i < nlogFileNum; i++)
@@ -125,10 +125,12 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 	// 每个文件根据时间间隔打印log
 	while (true)
 	{
+		// 获取起始时间
 		start=chrono::steady_clock::now();
 		double dTimeElapse = GetTimeElapse(printLogTime, start);
 		if (dTimeElapse > 10.f)
 		{
+			// 每10秒输出写入的log数
 			std::cout << "per ten second write log num: " << nLogNum << std::endl;
 			printLogTime = start;
 			nLogNum = 0;
@@ -149,41 +151,14 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 					MyLogSave(pFile, ss.str().c_str());
 					nLogNum++;
 				}
-
-				int nFileSize = ftell(pFile);
-				if (nFileSize > 1024 * 1024 * 100)
-				{
-					isFileSizeFull = true;
-				}
 			}
 		}
 
-		// 文件超出大小，打印到下个文件
-		if (isFileSizeFull)
-		{
-			fileIndex++;
-			if (fileIndex > 10)
-			{
-				fileIndex = 1;
-			}
-
-			for (int i = 0; i < vecFILE.size(); i++)
-			{
-				FILE* pFile = vecFILE[i];
-				if (pFile != nullptr)
-				{
-					fclose (pFile);
-				}
-
-				std::string strFileName = GetFileName(tt, "myfile", i, fileIndex);
-				vecFILE[i] = fopen (strFileName.c_str(),"w");
-			}
-		}
+		// 获取结束时间
+		end=chrono::steady_clock::now();
 
 		// 计算时间间隔内打印完log后剩余多少时间，并进行sleep
-		end=chrono::steady_clock::now();
 		cost_time=GetTimeElapse(start, end);
-
 		int cost_time_ms = (int)(cost_time * 1000.f);
 		if (cost_time_ms < logInterval)
 		{
@@ -195,6 +170,7 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 		}
 	}// end of while
 
+	// 关闭文件
 	for (int i = 0; i < vecFILE.size(); i++)
 	{
 		FILE* pFile = vecFILE[i];
@@ -218,6 +194,7 @@ int main()
 	int nLogNumPer_50_ms = nLogNumPerSecond / 20; // 每50ms打印的log数
 	int nLogNumPer_200_ms = nLogNumPerSecond / 5; // 每200ms打印的log数
 	int nLogNumPer_500_ms = nLogNumPerSecond / 2; // 每500ms打印的log数
+
 	if (nLogNumPer_50_ms > 0)
 	{
 		DiskIOTest(nLogFile, nLogNumPer_50_ms, 50);
