@@ -1,4 +1,7 @@
-﻿#include <iostream>
+﻿// DiskIOTest.cpp : 此文件包含 "main" 函数。程序执行将在此处开始并结束。
+//
+
+#include <iostream>
 #include <Windows.h>
 #include <process.h>
 #include <tchar.h>
@@ -10,7 +13,8 @@
 #include <thread>
 #include <direct.h>
 #include <stdio.h>
-#include <vector>
+
+#include "XBLog/XBLog.h"
 
 using namespace std;
 
@@ -42,7 +46,7 @@ struct tm GetTime(unsigned int& _precise)
 }
 
 // 获取log文件名称
-std::string GetFileName(struct tm tt, std::string strFileName, int fileIndex, int logIndex)
+std::string GetFileName(struct tm tt, std::string strFileName, int index)
 {
 	char szModulePath[MAX_PATH];
 	std::string strLogDir;
@@ -55,10 +59,12 @@ std::string GetFileName(struct tm tt, std::string strFileName, int fileIndex, in
 	strLogDir += "log\\";
 	_mkdir(strLogDir.c_str());
 
+	bool bInitLog = XBLOG_InitLog("Instance Server - Mar  3 2021 17:38:16", "ServerLog/InsServer", "./", time(nullptr));
+
 	std::stringstream ssFileName;
 	ssFileName << strLogDir << strFileName 
 		<< tt.tm_year + 1900 << tt.tm_mon << tt.tm_mday 
-		<< tt.tm_hour <<tt.tm_min << tt.tm_sec << "_"<< fileIndex << "_" << logIndex <<".log";
+		<< tt.tm_hour <<tt.tm_min << tt.tm_sec << "_" << index <<".log";
 
 	return ssFileName.str().c_str();
 }
@@ -93,12 +99,16 @@ double GetTimeElapse(chrono::steady_clock::time_point start, chrono::steady_cloc
 	return (double)(duration.count())*chrono::microseconds::period::num/chrono::microseconds::period::den;
 }
 
-//  磁盘IO测试
-//  nlogFileNum: 测试写入的文件数
-//  logNumPerTime: 每个文件每次写入的log条数
-//  logInterval: 写入的时间间隔
-void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
+int main()
 {
+	// 启动Log
+	std::cout << "Enter the number of logs per second: ";
+	int nLogNumPerSecond = 0;
+	scanf("%d", &nLogNumPerSecond);
+
+	// 每50ms打印的log数
+	int nLogNumPer_50_ms = nLogNumPerSecond / 20;
+
 	unsigned int _precise = 0;
 	tm tt = GetTime(_precise);
 
@@ -108,21 +118,10 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 	chrono::steady_clock::time_point start, printLogTime,end;
 	printLogTime = chrono::steady_clock::now();
 
-	// 初始化需要打印log的文件
 	int fileIndex = 1;
-	std::vector<FILE*> vecFILE;
-	for (int i = 0; i < nlogFileNum; i++)
-	{
-		std::string strFileName = GetFileName(tt, "myfile", i, fileIndex);
-		FILE * pFile;
-		pFile = fopen (strFileName.c_str(),"w");
-		if (pFile != nullptr)
-		{
-			vecFILE.push_back(pFile);
-		}
-	}
-
-	// 每个文件根据时间间隔打印log
+	std::string strFileName = GetFileName(tt, "myfile", fileIndex);
+	FILE * pFile;
+	pFile = fopen (strFileName.c_str(),"w");
 	while (true)
 	{
 		start=chrono::steady_clock::now();
@@ -135,105 +134,53 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 		}
 
 		fbnc=fibonacci(30);
-		bool isFileSizeFull = false;
-		for (int i = 1; i < logNumPerTime + 1; i++)
+		for (int m = 1; m < 80; m++)
 		{
-			std::stringstream ss;
-			ss << "=============================================================================================================== test Disk IO write: " << i;
-
-			for (int j = 0; j < vecFILE.size(); j++)
+			std::stringstream ssFileName;
+			ssFileName << "pingfile_" << m;
+			std::string strPingFileName = ssFileName.str().c_str();
+			for (int i = 1; i < nLogNumPer_50_ms + 1; i++)
 			{
-				FILE* pFile = vecFILE[j];
-				if (pFile != nullptr)
-				{
-					MyLogSave(pFile, ss.str().c_str());
-					nLogNum++;
-				}
+				//std::stringstream ss;
+				//ss << "=============================================================================================================== test Disk IO write: " << i;
 
-				int nFileSize = ftell(pFile);
-				if (nFileSize > 1024 * 1024 * 100)
-				{
-					isFileSizeFull = true;
-				}
+				//MyLogSave(pFile, ss.str().c_str());
+				//LOGINS("=============================================================================================================== test Disk IO write: %d", i);
+				XBLOG_LogAsync(strPingFileName.c_str(), xb_log::eLOG_INFO, "idNum:%u, p:%d", 1, 1);
+				nLogNum++;
 			}
 		}
+		end=chrono::steady_clock::now();
+		cost_time=GetTimeElapse(start, end);
+		//std::cout << "cost_time: " << cost_time << endl;
 
-		// 文件超出大小，打印到下个文件
-		if (isFileSizeFull)
+		int cost_time_ms = (int)(cost_time * 1000.f);
+		if (cost_time * 1000 < 50)
 		{
+			//std::cout << "sleep time: " << 50 - cost_time_ms << std::endl;
+			std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<long>(50 - cost_time_ms)));
+		}
+		else
+		{
+			std::cout << "time out per 50 ms logNum:  " << nLogNumPer_50_ms << ", cost time: " << cost_time_ms << "ms" << std::endl;
+		}
+
+		int nFileSize = ftell(pFile);
+		if (nFileSize > 1024 * 1024 * 100)
+		{
+			std::cout << "file size :" << nFileSize << std::endl;
+			fclose(pFile);
+
 			fileIndex++;
 			if (fileIndex > 10)
 			{
 				fileIndex = 1;
 			}
-
-			for (int i = 0; i < vecFILE.size(); i++)
-			{
-				FILE* pFile = vecFILE[i];
-				if (pFile != nullptr)
-				{
-					fclose (pFile);
-				}
-
-				std::string strFileName = GetFileName(tt, "myfile", i, fileIndex);
-				vecFILE[i] = fopen (strFileName.c_str(),"w");
-			}
-		}
-
-		// 计算时间间隔内打印完log后剩余多少时间，并进行sleep
-		end=chrono::steady_clock::now();
-		cost_time=GetTimeElapse(start, end);
-
-		int cost_time_ms = (int)(cost_time * 1000.f);
-		if (cost_time_ms < logInterval)
-		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<long>(logInterval - cost_time_ms)));
-		}
-		else
-		{
-			std::cout << "time out per "<< cost_time_ms <<" ms logNum:  " << logNumPerTime << ", cost time: " << cost_time_ms << "ms" << std::endl;
-		}
-	}// end of while
-
-	for (int i = 0; i < vecFILE.size(); i++)
-	{
-		FILE* pFile = vecFILE[i];
-		if (pFile != nullptr)
-		{
-			fclose(pFile);
+			strFileName = GetFileName(tt, "myfile", fileIndex);
+			pFile = fopen (strFileName.c_str(),"w");
 		}
 	}
-}
-
-int main()
-{
-	std::cout << "Enter the number of log files: ";
-	int nLogFile = 0;
-	scanf("%d", &nLogFile);
-
-	std::cout << "Enter the number of logs per file per second: ";
-	int nLogNumPerSecond = 0;
-	scanf("%d", &nLogNumPerSecond);
-
-	int nLogNumPer_50_ms = nLogNumPerSecond / 20; // 每50ms打印的log数
-	int nLogNumPer_200_ms = nLogNumPerSecond / 5; // 每200ms打印的log数
-	int nLogNumPer_500_ms = nLogNumPerSecond / 2; // 每500ms打印的log数
-	if (nLogNumPer_50_ms > 0)
-	{
-		DiskIOTest(nLogFile, nLogNumPer_50_ms, 50);
-	}
-	else if (nLogNumPer_200_ms > 0)
-	{
-		DiskIOTest(nLogFile, nLogNumPer_200_ms, 200);
-	}
-	else if (nLogNumPer_500_ms > 0)
-	{
-		DiskIOTest(nLogFile, nLogNumPer_500_ms, 500);
-	}
-	else
-	{
-		DiskIOTest(nLogFile, nLogNumPerSecond, 1000);
-	}
+	fclose (pFile);
 
 	std::system("pause");
 }
