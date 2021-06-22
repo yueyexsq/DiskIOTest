@@ -1,59 +1,100 @@
 ﻿#include <iostream>
-#include <Windows.h>
-#include <process.h>
-#include <tchar.h>
-#include <strsafe.h>
 #include <time.h>
 #include <sstream>
 #include <chrono>
 #include <iomanip>
 #include <thread>
-#include <direct.h>
 #include <stdio.h>
 #include <vector>
+
+#ifdef WIN32
+#include <Windows.h>
+#include <process.h>
+#include <tchar.h>
+#include <strsafe.h>
+#include <direct.h>
+#else
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <ctype.h>
+#include <wchar.h>
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#endif
+
+#include <fstream>
+#include <filesystem>
+
+#ifndef MAX_PATH
+#define MAX_PATH 260
+#endif
+
+// g++ -std=c++17 DiskIOTest.cpp -o diskIOTest -lstdc++fs
 
 using namespace std;
 
 // 创建文件目录
-bool MakeDirectory(LPCTSTR szDirectory)
+bool MakeDirectory(std::string szDirectory)
 {
-    BOOL bResult = CreateDirectory(szDirectory, NULL);
+#ifdef WIN32
+    BOOL bResult = CreateDirectoryA(szDirectory.c_str(), NULL);
     return (bResult) ? true : false;
+#else
+	return (mkdir(szDirectory.c_str(), 0755) == 0);
+#endif
+}
+
+long long clib_time()
+{
+	time_t result = 0;
+	::time(&result);
+	return result;
+}
+
+extern tm time2tm( time_t t )
+{
+#ifdef WIN32
+	struct tm tt = { 0 };
+	localtime_s(&tt, &t);
+	return tt;
+#else
+	struct tm tt = { 0 };
+	localtime_r(&t, &tt);
+	return tt;
+#endif
 }
 
 // 获取当前时间
 struct tm GetTime(unsigned int& _precise)
 {
-	time_t _time;			
-	FILETIME ft;
-	GetSystemTimeAsFileTime(&ft);
-	unsigned long long now = ft.dwHighDateTime;
-	now <<= 32;
-	now |= ft.dwLowDateTime;
-	now /=10;
-	now -=11644473600000000ULL;
-	now /=1000;
-	_time = now/1000;
-	_precise = (unsigned int)(now%1000);
-	struct tm tt = { 0 };
-	localtime_s(&tt, &_time);
-
-	return tt;
+	long long curTime = clib_time();
+	return time2tm(curTime);
 }
+
 
 // 获取log文件名称
 std::string GetFileName(struct tm tt, std::string strFileName, int fileIndex, int logIndex)
 {
-	char szModulePath[MAX_PATH];
-	std::string strLogDir;
-	if (0 != GetModuleFileNameA(nullptr, szModulePath, MAX_PATH))
-	{
-		strLogDir = szModulePath;
-		strLogDir = strLogDir.substr(0, strLogDir.rfind('\\') + 1);
-	}
-
+	std::string strLogDir = std::filesystem::current_path().generic_string();
+#ifdef WIN32
+	strLogDir = strLogDir.substr(0, strLogDir.rfind('\\') + 1);
 	strLogDir += "log\\";
-	_mkdir(strLogDir.c_str());
+#else
+	strLogDir += "/log/";
+#endif
+
+	MakeDirectory(strLogDir.c_str());
 
 	std::stringstream ssFileName;
 	ssFileName << strLogDir << strFileName 
@@ -71,7 +112,7 @@ void MyLogSave(FILE* pFile, const char * log)
 	fprintf (pFile, "%d-%02d-%02d %02d:%02d:%02d.%03d INFO: %s\n",
 		 tt.tm_year + 1900, tt.tm_mon + 1, tt.tm_mday, tt.tm_hour, tt.tm_min, tt.tm_sec, _precise, log);
 
-	std::fflush(pFile);
+	//std::fflush(pFile);
 }
 
 int fibonacci(int i)
@@ -108,7 +149,7 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 	chrono::steady_clock::time_point start, printLogTime,end;
 	printLogTime = chrono::steady_clock::now();
 
-	// 初始化需要打印log的文件
+	// 初始化打开需要打印log的文件
 	int fileIndex = 1;
 	std::vector<FILE*> vecFILE;
 	for (int i = 0; i < nlogFileNum; i++)
@@ -125,10 +166,12 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 	// 每个文件根据时间间隔打印log
 	while (true)
 	{
+		// 获取起始时间
 		start=chrono::steady_clock::now();
 		double dTimeElapse = GetTimeElapse(printLogTime, start);
 		if (dTimeElapse > 10.f)
 		{
+			// 每10秒输出写入的log数
 			std::cout << "per ten second write log num: " << nLogNum << std::endl;
 			printLogTime = start;
 			nLogNum = 0;
@@ -149,41 +192,14 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 					MyLogSave(pFile, ss.str().c_str());
 					nLogNum++;
 				}
-
-				int nFileSize = ftell(pFile);
-				if (nFileSize > 1024 * 1024 * 100)
-				{
-					isFileSizeFull = true;
-				}
 			}
 		}
 
-		// 文件超出大小，打印到下个文件
-		if (isFileSizeFull)
-		{
-			fileIndex++;
-			if (fileIndex > 10)
-			{
-				fileIndex = 1;
-			}
-
-			for (int i = 0; i < vecFILE.size(); i++)
-			{
-				FILE* pFile = vecFILE[i];
-				if (pFile != nullptr)
-				{
-					fclose (pFile);
-				}
-
-				std::string strFileName = GetFileName(tt, "myfile", i, fileIndex);
-				vecFILE[i] = fopen (strFileName.c_str(),"w");
-			}
-		}
+		// 获取结束时间
+		end=chrono::steady_clock::now();
 
 		// 计算时间间隔内打印完log后剩余多少时间，并进行sleep
-		end=chrono::steady_clock::now();
 		cost_time=GetTimeElapse(start, end);
-
 		int cost_time_ms = (int)(cost_time * 1000.f);
 		if (cost_time_ms < logInterval)
 		{
@@ -195,6 +211,7 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 		}
 	}// end of while
 
+	// 关闭文件
 	for (int i = 0; i < vecFILE.size(); i++)
 	{
 		FILE* pFile = vecFILE[i];
@@ -218,6 +235,7 @@ int main()
 	int nLogNumPer_50_ms = nLogNumPerSecond / 20; // 每50ms打印的log数
 	int nLogNumPer_200_ms = nLogNumPerSecond / 5; // 每200ms打印的log数
 	int nLogNumPer_500_ms = nLogNumPerSecond / 2; // 每500ms打印的log数
+
 	if (nLogNumPer_50_ms > 0)
 	{
 		DiskIOTest(nLogFile, nLogNumPer_50_ms, 50);
