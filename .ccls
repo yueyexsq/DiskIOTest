@@ -1,0 +1,8 @@
+clang
+%h -x c++-header
+-Wall
+-Wextra
+%cpp -std=c++17
+%c -std=c17
+-I./DiskIOTest
+-I.

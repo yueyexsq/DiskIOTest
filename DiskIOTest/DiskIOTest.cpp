@@ -40,7 +40,7 @@
 #define MAX_PATH 260
 #endif
 
-// g++ -std=c++17 DiskIOTest.cpp -o diskIOTest -lstdc++fs
+// g++ -std=c++17 DiskIOTest.cpp -o diskIOTest -lstdc++fs -g
 
 using namespace std;
 
@@ -130,8 +130,43 @@ int fibonacci(int i)
 double GetTimeElapse(chrono::steady_clock::time_point start, chrono::steady_clock::time_point end)
 {
 	auto duration=chrono::duration_cast<chrono::microseconds>(end-start);
-	double cost_time=(double)(duration.count())*chrono::microseconds::period::num/chrono::microseconds::period::den;
+	// double cost_time=(double)(duration.count())*chrono::microseconds::period::num/chrono::microseconds::period::den;
 	return (double)(duration.count())*chrono::microseconds::period::num/chrono::microseconds::period::den;
+}
+
+// 打印当前时间
+void PrintNow()
+{
+	auto nTime = chrono::system_clock::now().time_since_epoch();
+	// 输出当前时间: 秒
+	std::cout << "time now seconds     : " << chrono::duration_cast<chrono::seconds>(nTime).count() << std::endl;
+	// 输出当前时间: 毫秒
+	std::cout << "time now milliseconds: " << chrono::duration_cast<chrono::milliseconds>(nTime).count() << std::endl;
+	// 输出当前时间: 微秒
+	std::cout << "time now microseconds: " << chrono::duration_cast<chrono::microseconds>(nTime).count() << std::endl;
+	// 输出当前时间: 纳秒
+	std::cout << "time now nanoseconds : " << nTime.count() << std::endl;
+	fflush(stdout);
+
+	/*
+	 * 以上输出的结果：
+		time now seconds     : 1640245490
+		time now milliseconds: 1640245490771
+		time now microseconds: 1640245490771712
+		time now nanoseconds : 1640245490771712012
+	 * */
+
+	// 打印当前时间字符串，格式为： Thu Dec 23 14:54:06 2021
+	std::time_t tt;
+	tt = chrono::system_clock::to_time_t(chrono::system_clock::now());
+	std::cout << "today is: " << ctime(&tt);
+
+	chrono::steady_clock::time_point start, end;
+	start = chrono::steady_clock::now();
+	end = chrono::steady_clock::now();
+	double dTimeElapse = GetTimeElapse(start, end);
+	std::cout << "dTimeElapse: " << dTimeElapse;
+
 }
 
 //  磁盘IO测试
@@ -146,7 +181,7 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 	int fbnc;
 	double cost_time;
 	int nLogNum = 0;
-	chrono::steady_clock::time_point start, printLogTime,end;
+	chrono::steady_clock::time_point start, printLogTime, end;
 	printLogTime = chrono::steady_clock::now();
 
 	// 初始化打开需要打印log的文件
@@ -224,6 +259,8 @@ void DiskIOTest(int nlogFileNum, int logNumPerTime, int logInterval)
 
 int main()
 {
+	PrintNow();
+
 	std::cout << "Enter the number of log files: ";
 	int nLogFile = 0;
 	scanf("%d", &nLogFile);
